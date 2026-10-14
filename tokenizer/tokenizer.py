@@ -17,30 +17,25 @@ class Tokenizer:
     def __init__(self, files_path: str, special_tokens: None | list = None):
         # Load vocab, merges and special tokens
         self.load(files_path)
-        vocab_size = len(self.vocab)
+        vocab_size = max(self.vocab, default=-1) + 1
         # Update the special tokens only if it is unseen one
         if special_tokens:
             idx = 0
-            while idx < len(special_tokens):
-                special_token = special_tokens[idx].encode("utf-8")
+            for special_token in special_tokens:
                 if special_token not in self.special_tokens:
-                    self.vocab[vocab_size + idx] = special_token
+                    self.vocab[vocab_size + idx] = special_token.encode("utf-8")
                     self.special_tokens[special_token] = vocab_size + idx
-                idx += 1
+                    idx += 1
 
     def encode(self, text):
-        special_tokens = list(self.special_tokens.keys()) or []
-        # Pre-tokenize
-        if self.special_tokens:
-            pattern = (
-                "("
-                + "|".join([regex.escape(special_token) for special_token in self.special_tokens])
-                + ")"
-            )
+        special_tokens = sorted(self.special_tokens, key=len, reverse=True)
+        if special_tokens:
+            pattern = "(" + "|".join(regex.escape(token) for token in special_tokens) + ")"
             chunks = regex.split(pattern, text)
         else:
             chunks = [text]
         text = []
+
         for chunk in chunks:
             if chunk not in self.special_tokens:
                 tokens = GPT4_PATTERN.findall(chunk)
