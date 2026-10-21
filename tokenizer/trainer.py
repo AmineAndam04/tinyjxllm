@@ -52,6 +52,8 @@ def process_job(file_path: str, start: int, end: int, special_tokens: list[str])
 
 
 def chunk_file(file_path, num_chunks, search_size, pre_tok_special_token):
+    if not isinstance(pre_tok_special_token, bytes):
+        pre_tok_special_token = pre_tok_special_token.encode("utf-8")
     file_size = os.path.getsize(file_path)
     print("file_size = ", file_size)
     prelim_chunk_size = file_size // num_chunks
@@ -92,9 +94,6 @@ def pre_tokenization(
          3- Computes pair count and pair indexes
     """
     # -------- Get boundaries
-    if not isinstance(pre_tok_special_token, bytes):
-        pre_tok_special_token = pre_tok_special_token.encode("utf-8")
-
     chunk_args = chunk_file(file_path, num_chunks, search_size, pre_tok_special_token)
     chunk_args = [(*chunk_arg, special_tokens) for chunk_arg in chunk_args]
 
@@ -246,7 +245,7 @@ def save(save_path, vocab, merges, special_tokens, save_readable):
 if __name__ == "__main__":
     print(os.getcwd())
     # Arguments
-    parser = argparse.ArgumentParser(description="Train a BPE tokenizer.")
+    parser = argparse.ArgumentParser(description="Train a BPE tokenizer")
     parser.add_argument("--file-path", type=str, default="data/TinyStoriesV2-GPT4-train.txt")
     parser.add_argument("--vocab-size", type=int, default=10000)
     parser.add_argument(
