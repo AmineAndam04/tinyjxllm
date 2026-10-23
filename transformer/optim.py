@@ -71,12 +71,18 @@ def update_adamw(model, grad, state):
 
 
 # Gradient clipping
-def clip_grads(grad, max_grad, eps=1e-6):  # to optimize : what types, and see what optax did
+def global_norm(grad):
+    return jnp.sqrt(sum(jnp.sum(jnp.square(g)) for g in jax.tree.leaves(grad)))
+
+
+def clip_grads(grad, max_grad, eps=1e-6, norm=None):
     """
-    Clip gradient using global norm
+    Clip gradient using global norm.
+    Pass `norm` to avoid recomputing it if you track the gradients
     """
-    global_norm = jnp.sqrt(sum(jnp.sum(jnp.square(g)) for g in jax.tree.leaves(grad)))
-    scale = jnp.where(global_norm <= max_grad, 1.0, max_grad / (global_norm + eps))
+    if norm is None:
+        norm = global_norm(grad)
+    scale = jnp.where(norm <= max_grad, 1.0, max_grad / (norm + eps))
     return jax.tree.map(lambda g: g * scale, grad)
 
 

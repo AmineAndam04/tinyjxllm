@@ -4,12 +4,12 @@ from datetime import datetime
 from functools import partial
 
 import jax
-import jax.profiler
+import jax.numpy as jnp
 import numpy as np
 from checkpoint import save_checkpoint
-from data import data_loading
+from data import data_loading, iterate_eval_data
 from logger import Logger
-from optim import clip_grads, get_optim_by_name
+from optim import clip_grads, get_optim_by_name, global_norm
 
 from transformer import TransformerLM, cross_entropy_loss
 
@@ -34,11 +34,11 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=42)
     # Model
     parser.add_argument("--vocab_size", type=int, default=10000)
-    parser.add_argument("--context_length", type=int, default=128)
-    parser.add_argument("--num_layers", type=int, default=2)
-    parser.add_argument("--d_model", type=int, default=128)
-    parser.add_argument("--num_heads", type=int, default=4)
-    parser.add_argument("--d_ff", type=int, default=-1)
+    parser.add_argument("--context_length", type=int, default=256)
+    parser.add_argument("--num_layers", type=int, default=4)
+    parser.add_argument("--d_model", type=int, default=512)
+    parser.add_argument("--num_heads", type=int, default=16)
+    parser.add_argument("--d_ff", type=int, default=1344)
     parser.add_argument("--rope_theta", type=float, default=10000)
     parser.add_argument("--use_bias", action="store_true")
     parser.add_argument("--act_fun", type=str, default="silu")
@@ -55,22 +55,21 @@ if __name__ == "__main__":
     parser.add_argument("--lr_max", type=float, default=1e-3)
     parser.add_argument("--lr_min", type=float, default=1e-4)
     parser.add_argument("--t_warmup", type=float, default=10)
-    parser.add_argument("--t_final", type=float, default=400)
+    parser.add_argument("--t_final", type=float, default=20000)
     # Training
-    parser.add_argument("--num_iterations", type=int, default=500)
+    parser.add_argument("--num_iterations", type=int, default=20000)
     parser.add_argument("--batch_size", type=int, default=64)
     # Logger
-    parser.add_argument("--logger", choices=["tensorboard", "wandb"], default="tensorboard")
+    parser.add_argument("--logger", choices=["tensorboard", "wandb"], default="wandb")
     parser.add_argument("--wandb_project", type=str, default="JAX-LLMs")
-    parser.add_argument("--wandb_entity", type=str, default=None)
+    parser.add_argument("--wandb_entity", type=str, default="andamamine-cleanmarl")
     parser.add_argument("--run_name", type=str, default="LM-Transformer")
-    parser.add_argument("--log_every", type=int, default=20)
+    parser.add_argument("--log_every", type=int, default=100)
     # Eval
-    parser.add_argument("--eval_every", type=int, default=50)
-    parser.add_argument("--n_eval_batches", type=int, default=20)
+    parser.add_argument("--eval_every", type=int, default=1000)
     # SAVE
     parser.add_argument("--save_path", type=str, default="runs")
-    parser.add_argument("--save_every", type=int, default=100)
+    parser.add_argument("--save_every", type=int, default=5000)
     args = parser.parse_args()
     if args.d_ff < 0:
         args.d_ff = None
@@ -123,50 +122,57 @@ if __name__ == "__main__":
         y_hat = model(token_ids=x)
         return cross_entropy_loss(logits=y_hat, targets=y)
 
-    def evaluate_step(model, val_data, n_eval_batches):
-        val_rng = np.random.default_rng(0)
-        losses = []
-        for _ in range(n_eval_batches):
-            x, y = data_loading(val_data, args.batch_size, args.context_length, val_rng)
-            losses.append(loss_fn(model, x, y))
-        return np.mean(losses)
+    def evaluate_step(model, val_data):
+        total, count = 0.0, 0
+        for x, y in iterate_eval_data(val_data, args.batch_size, args.context_length):
+            total += loss_fn(model, x, y) * x.size
+            count += x.size
+        return float(total) / count
 
     @jax.jit
     def train_step(model, optim_state, x, y):
         loss, grads = jax.value_and_grad(loss_fn)(model, x, y)
+        grad_norm = global_norm(grads)
         if args.clip_grads > 0:
-            grads = clip_grads(grads, args.clip_grads, eps=args.optim_eps)
+            grads = clip_grads(grads, args.clip_grads, eps=args.optim_eps, norm=grad_norm)
         model, optim_state = optim_update(model=model, grad=grads, state=optim_state)
-        return model, optim_state, loss
+        return model, optim_state, {"loss": loss, "grad_norm": grad_norm}
 
-    train_loss = 0
+    train_loss, grads_avg, grads_max = 0, 0, 0
     window_start = time.perf_counter()
     elapsed_steps = 0
     for t in range(1, args.num_iterations + 1):
         if args.use_lr_schedular:
             optim_state = optim_state._replace(lr=lr_schedular(t))
-            logger.log("train/lr", lr_schedular(t), t)
+
         # Train
         x, y = data_loading(
             data=train_data, batch_size=args.batch_size, context_length=args.context_length, rng=rng
         )
-        model, optim_state, loss = train_step(model, optim_state, x, y)
-        train_loss = train_loss + loss
+        model, optim_state, metrics = train_step(model, optim_state, x, y)
+        train_loss = train_loss + metrics["loss"]
+        grads_avg = grads_avg + metrics["grad_norm"]
+        grads_max = jnp.maximum(grads_max, metrics["grad_norm"])
         elapsed_steps += 1
         # Logging
         if t % args.log_every == 0:
             logger.log("train/loss", float(train_loss) / args.log_every, t)
+            logger.log("train/grads_avg", float(grads_avg) / args.log_every, t)
+            logger.log("train/grads_max", float(grads_max), t)
+            if args.use_lr_schedular:
+                logger.log("train/lr", lr_schedular(t), t)
             # logg tokens per second
             period = time.perf_counter() - window_start
             tok_per_s = (elapsed_steps * args.batch_size * args.context_length) / period
             logger.log("perf/tokens_per_sec", tok_per_s, t)
-            train_loss, elapsed_steps = 0, 0
+            train_loss, grads_avg, grads_max = 0, 0, 0
             window_start = time.perf_counter()
+            elapsed_steps = 0
         # Evaluate
         if t % args.eval_every == 0:
-            loss.block_until_ready()
+            metrics["loss"].block_until_ready()
             eval_start = time.perf_counter()
-            val_loss = evaluate_step(model, valid_data, args.n_eval_batches)
+            val_loss = evaluate_step(model, valid_data)
             logger.log("val/loss", val_loss, t)
             eval_end = time.perf_counter()
             window_start += eval_end - eval_start
@@ -176,7 +182,7 @@ if __name__ == "__main__":
                 path=logger.log_dir, model=model, optim_state=optim_state, extra=vars(args)
             )
     # Final eval and checkpointing
-    val_loss = evaluate_step(model, valid_data, args.n_eval_batches)
+    val_loss = evaluate_step(model, valid_data)
     logger.log("val/loss", val_loss, args.num_iterations + 1)
     save_checkpoint(path=logger.log_dir, model=model, optim_state=optim_state, extra=vars(args))
     logger.close()
