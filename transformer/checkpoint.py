@@ -27,3 +27,11 @@ def load_checkpoint(path, model, optim_state):
     model = jax.tree.unflatten(model_def, [jnp.asarray(x) for x in ckpt["params"]])
     optim_state = jax.tree.unflatten(optim_def, [jnp.asarray(x) for x in ckpt["optim"]])
     return model, optim_state, ckpt["extra"]
+
+
+def load_model_only(path, model):
+    with open(f"{path}/checkpoint.pkl", "rb") as f:
+        ckpt = pickle.load(f)
+    _, model_def = jax.tree.flatten(model)
+    model = jax.tree.unflatten(model_def, [jnp.asarray(x) for x in ckpt["params"]])
+    return model

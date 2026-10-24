@@ -2,7 +2,7 @@ import json
 
 import numpy as np
 import regex
-from trainer import merge
+from .trainer import merge
 
 GPT4_PATTERN = regex.compile(
     r"""(?i:'s|'t|'re|'ve|'m|'ll|'d)|"""
