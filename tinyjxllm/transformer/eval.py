@@ -1,19 +1,13 @@
-import os
-import sys
-from pathlib import Path
-
-sys.path.append(str(Path(__file__).resolve().parent.parent))
-
 import argparse
 import json
+import os
 from types import SimpleNamespace
 
 import jax
 import jax.numpy as jnp
 from checkpoint import load_model_only
+from tinyjxllm.tokenizer.tokenizer import Tokenizer
 from training import ACT_FUN
-
-from tokenizer.tokenizer import Tokenizer
 from transformer import TransformerLM
 
 
@@ -110,7 +104,7 @@ def generate(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train a Transformer LM")
     parser.add_argument("--model_path", type=str)
-    parser.add_argument("--tokenizer_path", type=str, default="llms-from-scratch/tokenizer")
+    parser.add_argument("--tokenizer_path", type=str, default="tinyjxllm/tokenizer/tinystories")
     parser.add_argument("--max_gen_toks", type=int, default=128)
     parser.add_argument(
         "--sampling", choices=["greedy", "random", "top_k", "top_p"], default="greedy"

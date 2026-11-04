@@ -9,12 +9,34 @@ from jax.tree_util import GetAttrKey, register_pytree_with_keys_class
 from jaxtyping import Array, ArrayLike, Int, PRNGKeyArray
 
 
+def auto_pytree_with_keys(children: tuple[str, ...], aux_data: tuple[str, ...]):
+    def decorator(cls):
+        def tree_flatten_with_keys(obj):
+            children_ = [(GetAttrKey(chld), getattr(obj, chld)) for chld in children]
+            aux_data_ = tuple(getattr(obj, aux) for aux in aux_data)
+            return children_, aux_data_
+
+        def tree_unflatten(aux_data_, children_):
+            obj = object.__new__(cls)
+            for f, value in zip(children, children_, strict=True):
+                setattr(obj, f, value)
+            for f, value in zip(aux_data, aux_data_, strict=True):
+                setattr(obj, f, value)
+            return obj
+
+        cls.tree_flatten_with_keys = tree_flatten_with_keys
+        cls.tree_unflatten = tree_unflatten
+
+        return register_pytree_with_keys_class(cls)
+
+    return decorator
+
+
 def uniform_init(key: PRNGKeyArray, shape: tuple, lim: float):
     return jax.random.uniform(key=key, shape=shape, minval=-lim, maxval=lim)
 
 
 def normal_init(key: PRNGKeyArray, shape: tuple, std: float):
-    print("shape", shape)
     return std * jax.random.normal(key=key, shape=shape)
 
 
@@ -22,7 +44,10 @@ def constant_init(shape: tuple, constant: float):
     return constant * jnp.ones(shape)
 
 
-@register_pytree_with_keys_class
+@auto_pytree_with_keys(
+    children=("weight", "bias"),
+    aux_data=("in_features", "out_features", "use_bias"),
+)
 class Linear:
     """
     Linear layer
@@ -46,20 +71,11 @@ class Linear:
             x = x + self.bias
         return x
 
-    def tree_flatten_with_keys(self):
-        children = ((GetAttrKey("weight"), self.weight), (GetAttrKey("bias"), self.bias))
-        aux_data = (self.in_features, self.out_features, self.use_bias)
-        return (children, aux_data)
 
-    @classmethod
-    def tree_unflatten(cls, aux_data, children):
-        obj = object.__new__(cls)
-        obj.in_features, obj.out_features, obj.use_bias = aux_data
-        obj.weight, obj.bias = children
-        return obj
-
-
-@register_pytree_with_keys_class
+@auto_pytree_with_keys(
+    children=("embeddings",),
+    aux_data=("num_embeddings", "dim_embedding"),
+)
 class Embedding:
     """
     Embedding layer
@@ -78,20 +94,11 @@ class Embedding:
     def decode(self, x: Array):
         return (x @ self.embeddings.T) * (1 / math.sqrt(self.dim_embedding))
 
-    def tree_flatten_with_keys(self):
-        children = ((GetAttrKey("embeddings"), self.embeddings),)
-        aux_data = (self.num_embeddings, self.dim_embedding)
-        return (children, aux_data)
 
-    @classmethod
-    def tree_unflatten(cls, aux_data, children):
-        obj = object.__new__(cls)
-        obj.num_embeddings, obj.dim_embedding = aux_data
-        (obj.embeddings,) = children
-        return obj
-
-
-@register_pytree_with_keys_class
+@auto_pytree_with_keys(
+    children=("gain",),
+    aux_data=("d_model", "eps"),
+)
 class RMSNorm:
     """
     Root Mean Square normalization
@@ -107,18 +114,6 @@ class RMSNorm:
         x = x * jax.lax.rsqrt(ms + self.eps) * self.gain
         return x
 
-    def tree_flatten_with_keys(self):
-        children = ((GetAttrKey("gain"), self.gain),)
-        aux_data = (self.d_model, self.eps)
-        return (children, aux_data)
-
-    @classmethod
-    def tree_unflatten(cls, aux_data, children):
-        obj = object.__new__(cls)
-        obj.d_model, obj.eps = aux_data
-        (obj.gain,) = children
-        return obj
-
 
 def find_d_ff_(d_model: int, multiple_of: int = 64) -> int:
     """
@@ -128,7 +123,10 @@ def find_d_ff_(d_model: int, multiple_of: int = 64) -> int:
     return multiple_of * round(d_ff / multiple_of)
 
 
-@register_pytree_with_keys_class
+@auto_pytree_with_keys(
+    children=("w1", "w2", "w3"),
+    aux_data=("d_model", "d_ff", "act_fun"),
+)
 class FeedForward:
     """
     The position-wise feedforward layer of a Transformer
@@ -155,22 +153,6 @@ class FeedForward:
     def __call__(self, x: Array) -> Array:
         return self.w2(self.act_fun(self.w1(x)) * self.w3(x))
 
-    def tree_flatten_with_keys(self):
-        children = (
-            (GetAttrKey("w1"), self.w1),
-            (GetAttrKey("w2"), self.w2),
-            (GetAttrKey("w3"), self.w3),
-        )
-        aux_data = (self.d_model, self.d_ff, self.act_fun)
-        return (children, aux_data)
-
-    @classmethod
-    def tree_unflatten(cls, aux_data, children):
-        obj = object.__new__(cls)
-        obj.d_model, obj.d_ff, obj.act_fun = aux_data
-        obj.w1, obj.w2, obj.w3 = children
-        return obj
-
 
 @cache
 def rope_rotations(max_seq_len: int, d_k: int, theta: float):
@@ -186,7 +168,10 @@ def rope_rotations(max_seq_len: int, d_k: int, theta: float):
         return jnp.cos(rotates), jnp.sin(rotates)  # of shape (max_seq_len,d_k)
 
 
-@register_pytree_with_keys_class
+@auto_pytree_with_keys(
+    children=(),
+    aux_data=("theta", "d_k", "max_seq_len"),
+)
 class RoPE:
     """
     Rotary Position Embeddings
@@ -208,17 +193,6 @@ class RoPE:
         x_sins = rearrange(jnp.stack([-scnd, frst], axis=-1), "... i j -> ... (i j)")
         return x * coses + x_sins * sines
 
-    def tree_flatten_with_keys(self):
-        children = ()
-        aux_data = (self.theta, self.d_k, self.max_seq_len)
-        return (children, aux_data)
-
-    @classmethod
-    def tree_unflatten(cls, aux_data, children):
-        obj = object.__new__(cls)
-        obj.theta, obj.d_k, obj.max_seq_len = aux_data
-        return obj
-
 
 def scaled_dot_product_attention(Q: Array, K: Array, V: Array, mask: None | Array = None):
     """
@@ -231,7 +205,10 @@ def scaled_dot_product_attention(Q: Array, K: Array, V: Array, mask: None | Arra
     return out
 
 
-@register_pytree_with_keys_class
+@auto_pytree_with_keys(
+    children=("w_query", "w_key", "w_value", "w_output", "rope"),
+    aux_data=("d_model", "num_heads", "use_bias"),
+)
 class MultiHeadSelfAttention:
     """
     Multi-head attention layer
@@ -280,26 +257,11 @@ class MultiHeadSelfAttention:
         out = rearrange(out, "... h seq d -> ... seq (h d)")
         return self.w_output(out)
 
-    def tree_flatten_with_keys(self):
-        children = (
-            (GetAttrKey("w_query"), self.w_query),
-            (GetAttrKey("w_key"), self.w_key),
-            (GetAttrKey("w_value"), self.w_value),
-            (GetAttrKey("w_output"), self.w_output),
-            (GetAttrKey("rope"), self.rope),
-        )
-        aux_data = (self.d_model, self.num_heads, self.use_bias)
-        return children, aux_data
 
-    @classmethod
-    def tree_unflatten(cls, aux_data, children):
-        obj = object.__new__(cls)
-        obj.d_model, obj.num_heads, obj.use_bias = aux_data
-        obj.w_query, obj.w_key, obj.w_value, obj.w_output, obj.rope = children
-        return obj
-
-
-@register_pytree_with_keys_class
+@auto_pytree_with_keys(
+    children=("norm1", "attn", "norm2", "ff"),
+    aux_data=(),
+)
 class TransformerBlock:
     """
     Transformer block = pre-norm + multi-head attention + pre-norm + feedforward
@@ -331,23 +293,11 @@ class TransformerBlock:
         x = x + self.ff(self.norm2(x))
         return x
 
-    def tree_flatten_with_keys(self):
-        children = (
-            (GetAttrKey("norm1"), self.norm1),
-            (GetAttrKey("attn"), self.attn),
-            (GetAttrKey("norm2"), self.norm2),
-            (GetAttrKey("ff"), self.ff),
-        )
-        return children, None
 
-    @classmethod
-    def tree_unflatten(cls, aux_data, children):
-        obj = object.__new__(cls)
-        obj.norm1, obj.attn, obj.norm2, obj.ff = children
-        return obj
-
-
-@register_pytree_with_keys_class
+@auto_pytree_with_keys(
+    children=("token_embeddings", "blocks", "ln_final", "lm_head"),
+    aux_data=("context_length",),
+)
 class TransformerLM:
     """
     Transformer Language model with RoPE embeddings
@@ -395,23 +345,6 @@ class TransformerLM:
         for block in self.blocks:
             x = block(x, token_positions)
         return self.lm_head(self.ln_final(x))
-
-    def tree_flatten_with_keys(self):
-        children = (
-            (GetAttrKey("token_embeddings"), self.token_embeddings),
-            (GetAttrKey("blocks"), self.blocks),
-            (GetAttrKey("ln_final"), self.ln_final),
-            (GetAttrKey("lm_head"), self.lm_head),
-        )
-        aux_data = (self.context_length,)
-        return children, aux_data
-
-    @classmethod
-    def tree_unflatten(cls, aux_data, children):
-        obj = object.__new__(cls)
-        (obj.context_length,) = aux_data
-        obj.token_embeddings, obj.blocks, obj.ln_final, obj.lm_head = children
-        return obj
 
 
 # Losses

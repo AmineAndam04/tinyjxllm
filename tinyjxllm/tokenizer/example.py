@@ -3,9 +3,8 @@ import argparse
 from multiprocessing import Pool
 
 import numpy as np
-from trainer import chunk_file
-
 from tokenizer import Tokenizer
+from trainer import chunk_file
 
 
 # We want to have one instance of tokenizer in each process (pros: shared cache )
@@ -25,7 +24,7 @@ def process_job(file_path: str, start: int, end: int, idx):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Encode a dataset using PBE")
     parser.add_argument("--file-path", type=str, default="data/TinyStoriesV2-GPT4-train.txt")
-    parser.add_argument("--tokenizer-path", type=str, default="tokenizer")
+    parser.add_argument("--tokenizer-path", type=str, default="tinyjxllm/tokenizer/tinystories")
     parser.add_argument(
         "--pre-tok-special-token",
         type=str,
