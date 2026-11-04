@@ -7,10 +7,10 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from checkpoint import save_checkpoint
-from data import data_loading, iterate_eval_data
 from logger import Logger
 from optim import clip_grads, get_optim_by_name, global_norm
 
+from data import data_loading, iterate_eval_data
 from transformer import TransformerLM, cross_entropy_loss
 
 ACT_FUN = {
@@ -34,11 +34,11 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=42)
     # Model
     parser.add_argument("--vocab_size", type=int, default=10000)
-    parser.add_argument("--context_length", type=int, default=256)
-    parser.add_argument("--num_layers", type=int, default=4)
-    parser.add_argument("--d_model", type=int, default=512)
-    parser.add_argument("--num_heads", type=int, default=16)
-    parser.add_argument("--d_ff", type=int, default=1344)
+    parser.add_argument("--context_length", type=int, default=128)
+    parser.add_argument("--num_layers", type=int, default=2)
+    parser.add_argument("--d_model", type=int, default=128)
+    parser.add_argument("--num_heads", type=int, default=4)
+    parser.add_argument("--d_ff", type=int, default=-1)
     parser.add_argument("--rope_theta", type=float, default=10000)
     parser.add_argument("--use_bias", action="store_true")
     parser.add_argument("--act_fun", type=str, default="silu")
@@ -57,16 +57,16 @@ if __name__ == "__main__":
     parser.add_argument("--t_warmup", type=float, default=10)
     parser.add_argument("--t_final", type=float, default=20000)
     # Training
-    parser.add_argument("--num_iterations", type=int, default=20000)
-    parser.add_argument("--batch_size", type=int, default=64)
+    parser.add_argument("--num_iterations", type=int, default=500)
+    parser.add_argument("--batch_size", type=int, default=32)
     # Logger
-    parser.add_argument("--logger", choices=["tensorboard", "wandb"], default="wandb")
+    parser.add_argument("--logger", choices=["tensorboard", "wandb"], default="tensorboard")
     parser.add_argument("--wandb_project", type=str, default="JAX-LLMs")
     parser.add_argument("--wandb_entity", type=str, default="andamamine-cleanmarl")
     parser.add_argument("--run_name", type=str, default="LM-Transformer")
-    parser.add_argument("--log_every", type=int, default=100)
+    parser.add_argument("--log_every", type=int, default=20)
     # Eval
-    parser.add_argument("--eval_every", type=int, default=1000)
+    parser.add_argument("--eval_every", type=int, default=100)
     # SAVE
     parser.add_argument("--save_path", type=str, default="runs")
     parser.add_argument("--save_every", type=int, default=5000)

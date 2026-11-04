@@ -13,6 +13,15 @@ def uniform_init(key: PRNGKeyArray, shape: tuple, lim: float):
     return jax.random.uniform(key=key, shape=shape, minval=-lim, maxval=lim)
 
 
+def normal_init(key: PRNGKeyArray, shape: tuple, std: float):
+    print("shape", shape)
+    return std * jax.random.normal(key=key, shape=shape)
+
+
+def constant_init(shape: tuple, constant: float):
+    return constant * jnp.ones(shape)
+
+
 @register_pytree_with_keys_class
 class Linear:
     """
@@ -28,7 +37,7 @@ class Linear:
         wkey, bkey = jax.random.split(key)
         lim = 1 / math.sqrt(in_features)
         self.weight = uniform_init(wkey, (out_features, in_features), lim)
-        self.bias = uniform_init(bkey, (out_features,), lim) if use_bias else None
+        self.bias = constant_init(shape=(out_features,), constant=0) if use_bias else None
 
     def __call__(self, x: Array) -> Array:
         # jnp.einsum("...k,jk->...j",x,self.weight)
@@ -59,12 +68,15 @@ class Embedding:
     def __init__(self, num_embeddings: int, dim_embedding: int, *, key: PRNGKeyArray) -> None:
         self.num_embeddings = num_embeddings
         self.dim_embedding = dim_embedding
-        self.embeddings = jax.random.normal(key, (num_embeddings, dim_embedding))
+        self.embeddings = normal_init(key, (num_embeddings, dim_embedding), std=0.02)
 
     def __call__(self, x: Int[ArrayLike, "..."]) -> Array:
         if not jnp.issubdtype(x.dtype, jnp.integer):
             raise TypeError(f"Inputs should be integers, got {x.dtype}")
         return self.embeddings.at[x].get(mode="fill", fill_value=jnp.nan)
+
+    def decode(self, x: Array):
+        return (x @ self.embeddings.T) * (1 / math.sqrt(self.dim_embedding))
 
     def tree_flatten_with_keys(self):
         children = ((GetAttrKey("embeddings"), self.embeddings),)
@@ -379,7 +391,6 @@ class TransformerLM:
         self.lm_head = Linear(d_model, vocab_size, use_bias=False, key=keys[-1])
 
     def __call__(self, token_ids: Array, token_positions: Array | None = None) -> Array:
-        assert token_ids.shape[-1] <= self.context_length  # shapes are static under jit
         x = self.token_embeddings(token_ids)
         for block in self.blocks:
             x = block(x, token_positions)

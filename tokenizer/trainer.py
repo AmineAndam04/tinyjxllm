@@ -107,7 +107,7 @@ def pre_tokenization(
     words = {}  # {"ID",word}
     word_counts = {}  # {ID:count}
     index = {}  # {pair: (id_word1,id_word2)}
-    pair_stats = {}
+    pair_stats = {}  # {pair: stat}
     for word_id, (word, count) in enumerate(word_stats.items()):
         word_bytes = list(word.encode("utf-8"))
         words[word_id] = word_bytes
@@ -156,6 +156,8 @@ def train(
         if not pair_counts:
             break
         pair = max(pair_counts, key=pair_counts.get)
+        # We added this one bellow to have the same merges as the version that uses the heapq
+        # pair = max(pair_counts, key=lambda p: (pair_counts[p], (vocab[p[0]], vocab[p[1]])))
         new_vocab_idx = len(vocab)
         vocab[new_vocab_idx] = vocab[pair[0]] + vocab[pair[1]]
         merges[pair] = new_vocab_idx
@@ -260,7 +262,7 @@ if __name__ == "__main__":
         default="<|endoftext|>",
         help="Token used to find chunk boundaries",
     )
-    parser.add_argument("--save-path", type=str, default="tokenizer")
+    parser.add_argument("--save-path", type=str, default="tokenizer/old")
     parser.add_argument("--num-chunks", type=int, default=64)
     parser.add_argument("--search-size", type=int, default=4096)
     parser.add_argument("--num-processes", type=int, default=4)
