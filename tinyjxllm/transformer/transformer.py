@@ -363,3 +363,33 @@ def perplexity(logits: Array, targets: Array) -> Array:
     Perplexity
     """
     return jnp.exp(cross_entropy_loss(logits, targets))
+
+
+def jax_pprint(model):
+    def visit(name, value, depth=0):
+        indent = "  " * depth
+
+        if hasattr(value, "shape"):
+            print(f"{indent}{name}: shape={value.shape}, dtype={value.dtype}")
+
+        elif hasattr(value, "tree_flatten_with_keys"):
+            print(f"{indent}{name}: {type(value).__name__}")
+            children, _ = value.tree_flatten_with_keys()
+
+            for key, child in children:
+                visit(key.name, child, depth + 1)
+
+        elif isinstance(value, (tuple, list)):
+            print(f"{indent}{name}:")
+
+            for index, child in enumerate(value):
+                visit(f"[{index}]", child, depth + 1)
+
+        else:
+            print(f"{indent}{name}: {value}")
+
+    visit("Model", model)
+
+
+def count_params(model):
+    return sum(leaf.size for leaf in jax.tree.leaves(model))

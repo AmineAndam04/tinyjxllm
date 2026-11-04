@@ -6,11 +6,10 @@ from functools import partial
 import jax
 import numpy as np
 from checkpoint import save_checkpoint
+from data import data_loading, iterate_eval_data
 from logger import Logger
 from optim import clip_grads, cosine_annealing, get_optim_by_name, global_norm
 from transformer import TransformerLM, cross_entropy_loss
-
-from data import data_loading, iterate_eval_data
 
 ACT_FUN = {
     "silu": jax.nn.silu,
