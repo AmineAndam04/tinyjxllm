@@ -155,38 +155,38 @@ class FeedForward:
 
 
 @cache
-def rope_rotations(max_seq_len: int, d_k: int, theta: float):
+def rope_rotations(max_seq_len: int, d_h: int, theta: float):
     """
     A function to cache the "cos" and "sin" values of RoPE embeddings
     """
     with jax.ensure_compile_time_eval():
-        exponents = -jnp.arange(0, d_k, step=2) / d_k
+        exponents = -jnp.arange(0, d_h, step=2) / d_h
         thetas = theta**exponents
         position = jnp.arange(max_seq_len)
         rotates = jnp.outer(position, thetas)
         rotates = jnp.repeat(rotates, 2, axis=-1)
-        return jnp.cos(rotates), jnp.sin(rotates)  # of shape (max_seq_len,d_k)
+        return jnp.cos(rotates), jnp.sin(rotates)  # of shape (max_seq_len,d_h)
 
 
 @auto_pytree_with_keys(
     children=(),
-    aux_data=("theta", "d_k", "max_seq_len"),
+    aux_data=("theta", "d_h", "max_seq_len"),
 )
 class RoPE:
     """
     Rotary Position Embeddings
     """
 
-    def __init__(self, theta: float, d_k: int, max_seq_len: int) -> None:
+    def __init__(self, theta: float, d_h: int, max_seq_len: int) -> None:
         self.theta = theta
-        self.d_k = d_k
+        self.d_h = d_h
         self.max_seq_len = max_seq_len
 
     def __call__(self, x: Array, token_positions: Array) -> Array:
         """
         token_position is assumed of (seq,) shape
         """
-        coses, sines = rope_rotations(max_seq_len=self.max_seq_len, d_k=self.d_k, theta=self.theta)
+        coses, sines = rope_rotations(max_seq_len=self.max_seq_len, d_h=self.d_h, theta=self.theta)
         coses = coses[token_positions]
         sines = sines[token_positions]
         frst, scnd = jnp.unstack(rearrange(x, " ... (i j) -> ... i j", j=2), axis=-1)
@@ -225,7 +225,7 @@ class MultiHeadSelfAttention:
     ) -> None:
         assert d_model % num_heads == 0
         if rope is not None:
-            assert rope.d_k == d_model // num_heads
+            assert rope.d_h == d_model // num_heads
         self.d_model = d_model
         self.num_heads = num_heads
         self.use_bias = use_bias
@@ -322,7 +322,7 @@ class TransformerLM:
         keys = jax.random.split(key, num_layers + 2)
         self.context_length = context_length
 
-        rope = RoPE(theta=rope_theta, d_k=d_model // num_heads, max_seq_len=context_length)
+        rope = RoPE(theta=rope_theta, d_h=d_model // num_heads, max_seq_len=context_length)
         self.token_embeddings = Embedding(vocab_size, d_model, key=keys[0])
         self.blocks = tuple(
             TransformerBlock(

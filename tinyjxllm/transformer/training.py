@@ -6,10 +6,11 @@ from functools import partial
 import jax
 import numpy as np
 from checkpoint import save_checkpoint
-from data import data_loading, iterate_eval_data
 from logger import Logger
 from optim import clip_grads, cosine_annealing, get_optim_by_name, global_norm
-from transformer import TransformerLM, cross_entropy_loss
+from transformer import TransformerLM, count_params, cross_entropy_loss
+
+from data import data_loading, iterate_eval_data
 
 ACT_FUN = {
     "silu": jax.nn.silu,
@@ -27,6 +28,7 @@ def train(args):
     # Import data
     train_data = np.load(args.train_path, mmap_mode="r")
     valid_data = np.load(args.valid_path, mmap_mode="r")
+    print("Tokens in training data: ", len(train_data))
     # Model
     model = TransformerLM(
         vocab_size=args.vocab_size,
@@ -41,6 +43,7 @@ def train(args):
         eps=args.eps,
         key=key,
     )
+    print("Num params", count_params(model))
     # Optimizer + schedular if any
     optim_init, optim_update = get_optim_by_name(name=args.optim)
     optim_state = optim_init(
