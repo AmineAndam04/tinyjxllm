@@ -92,7 +92,7 @@ class Embedding:
         return self.embeddings.at[x].get(mode="fill", fill_value=jnp.nan)
 
     def decode(self, x: Array):
-        return (x @ self.embeddings.T) * (1 / math.sqrt(self.dim_embedding))
+        return x @ self.embeddings.T
 
 
 @auto_pytree_with_keys(
@@ -345,6 +345,7 @@ class TransformerLM:
         for block in self.blocks:
             x = block(x, token_positions)
         return self.lm_head(self.ln_final(x))
+        # return self.token_embeddings.decode(self.ln_final(x))
 
 
 # Losses

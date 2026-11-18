@@ -8,6 +8,7 @@ import jax.numpy as jnp
 import numpy as np
 
 
+# TODO in the last iteration save just the params
 def save_checkpoint(path, model, optim_state, extra: dict):
     os.makedirs(path, exist_ok=True)
     checkpoint = {
