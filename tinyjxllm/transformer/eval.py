@@ -6,9 +6,10 @@ from types import SimpleNamespace
 import jax
 import jax.numpy as jnp
 from checkpoint import load_model_only
-from tinyjxllm.tokenizer.tokenizer import Tokenizer
 from training import ACT_FUN
 from transformer import TransformerLM
+
+from tinyjxllm.tokenizer.tokenizer import Tokenizer
 
 
 def greedy_sampling(logits, **kwargs):
@@ -99,6 +100,17 @@ def generate(
             break
 
     return tokenizer.decode(next_toks)
+
+
+def get_name(args):
+    if args.sampling == "greedy":
+        return "greedy"
+    elif args.sampling == "random":
+        return f"random-temp_{args.temp}"
+    elif args.sampling == "top_k":
+        return f"top_k-temp_{args.temp}-k_{args.top_k}"
+    elif args.sampling == "top_p":
+        return f"top_p-temp_{args.temp}-p_{args.top_p}"
 
 
 if __name__ == "__main__":
@@ -219,6 +231,6 @@ if __name__ == "__main__":
         outputs[prompt] = next_tokens
         print("The prompt is :", prompt)
         print("Completion is :", next_tokens)
-        name = f"{args.sampling}-temp_{args.temp}-top_k_{args.top_k}-top_p_{args.top_p}-seed_{args.seed}"
+        name = get_name(args)
         with open(os.path.join(args.model_path, f"{name}.json"), "w", encoding="utf-8") as f:
             json.dump(outputs, f, indent=4, ensure_ascii=False)

@@ -151,10 +151,10 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=42)
     # Model
     parser.add_argument("--vocab_size", type=int, default=10000)
-    parser.add_argument("--context_length", type=int, default=128)
-    parser.add_argument("--num_layers", type=int, default=2)
-    parser.add_argument("--d_model", type=int, default=128)
-    parser.add_argument("--num_heads", type=int, default=4)
+    parser.add_argument("--context_length", type=int, default=256)
+    parser.add_argument("--num_layers", type=int, default=4)
+    parser.add_argument("--d_model", type=int, default=512)
+    parser.add_argument("--num_heads", type=int, default=16)
     parser.add_argument("--d_ff", type=int, default=-1)
     parser.add_argument("--rope_theta", type=float, default=10000)
     parser.add_argument("--use_bias", action="store_true")
@@ -172,9 +172,9 @@ if __name__ == "__main__":
     parser.add_argument("--lr_max", type=float, default=1e-3)
     parser.add_argument("--lr_min", type=float, default=1e-4)
     parser.add_argument("--t_warmup", type=float, default=10)
-    parser.add_argument("--t_final", type=float, default=500)
+    parser.add_argument("--t_final", type=float, default=40000)
     # Training
-    parser.add_argument("--num_iterations", type=int, default=500)
+    parser.add_argument("--num_iterations", type=int, default=40000)
     parser.add_argument("--batch_size", type=int, default=32)
     # Logger
     parser.add_argument("--logger", choices=["tensorboard", "wandb"], default="tensorboard")
