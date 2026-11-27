@@ -26,6 +26,8 @@ def auto_pytree_with_keys(children: tuple[str, ...], aux_data: tuple[str, ...]):
 
         cls.tree_flatten_with_keys = tree_flatten_with_keys
         cls.tree_unflatten = tree_unflatten
+        if "__call__" in cls.__dict__:
+            cls.__call__ = jax.named_call(cls.__call__, name=cls.__name__)
 
         return register_pytree_with_keys_class(cls)
 
@@ -243,9 +245,12 @@ class MultiHeadSelfAttention:
         )
 
     def __call__(self, x: Array, token_positions: Array | None = None) -> Array:
-        query = rearrange(self.w_query(x), "... seq (h d) -> ... h seq d ", h=self.num_heads)
-        key = rearrange(self.w_key(x), "... seq (h d) -> ... h seq d ", h=self.num_heads)
-        value = rearrange(self.w_value(x), "... seq (h d) -> ... h seq d ", h=self.num_heads)
+        with jax.named_scope("query"):
+            query = rearrange(self.w_query(x), "... seq (h d) -> ... h seq d ", h=self.num_heads)
+        with jax.named_scope("key"):
+            key = rearrange(self.w_key(x), "... seq (h d) -> ... h seq d ", h=self.num_heads)
+        with jax.named_scope("value"):
+            value = rearrange(self.w_value(x), "... seq (h d) -> ... h seq d ", h=self.num_heads)
         if self.rope:
             if token_positions is None:
                 token_positions = jnp.arange(x.shape[-2])
@@ -253,8 +258,10 @@ class MultiHeadSelfAttention:
             query = self.rope(query, token_positions)
             key = self.rope(key, token_positions)
         mask = jnp.tril(jnp.ones((x.shape[-2], x.shape[-2]), dtype=bool))
-        out = scaled_dot_product_attention(Q=query, K=key, V=value, mask=mask)
-        out = rearrange(out, "... h seq d -> ... seq (h d)")
+        with jax.named_scope("attention"):
+            out = scaled_dot_product_attention(Q=query, K=key, V=value, mask=mask)
+        with jax.named_scope("out"):
+            out = rearrange(out, "... h seq d -> ... seq (h d)")
         return self.w_output(out)
 
 
@@ -344,8 +351,10 @@ class TransformerLM:
         x = self.token_embeddings(token_ids)
         for block in self.blocks:
             x = block(x, token_positions)
-        return self.lm_head(self.ln_final(x))
-        # return self.token_embeddings.decode(self.ln_final(x))
+        x = self.ln_final(x)
+        with jax.named_scope("lm_head"):
+            return self.lm_head(x)
+        # return self.token_embeddings.decode(x)
 
 
 # Losses

@@ -1,18 +1,16 @@
-from tensorboardX import SummaryWriter
-import time
 import os
 from datetime import datetime
-from functools import partial
 
 import jax
 import numpy as np
-from checkpoint import save_checkpoint
-from logger import Logger
-from optim import clip_grads, cosine_annealing, get_optim_by_name, global_norm
-from transformer import TransformerLM, count_params, cross_entropy_loss
+from optim import clip_grads, get_optim_by_name, global_norm
+from tensorboardX import SummaryWriter
+from transformer import TransformerLM, cross_entropy_loss
 
-from data import data_loading, iterate_eval_data
-
+# os.environ["XLA_FLAGS"] = (
+#     os.environ.get("XLA_FLAGS", "")
+#     + " --xla_gpu_enable_command_buffer="
+# )
 ACT_FUN = {
     "silu": jax.nn.silu,
     "relu": jax.nn.relu,
@@ -96,9 +94,17 @@ if __name__ == "__main__":
         model, optim_state, out = train_step(model, optim_state, x, y)
     jax.block_until_ready((model, optim_state, out))
     # Train
-    with jax.profiler.trace(log_dir=log_dir, create_perfetto_trace=True):
+    options = jax.profiler.ProfileOptions()
+    options.advanced_configuration = {
+        "gpu_enable_cupti_activity_graph_trace": True,
+    }
+
+    with jax.profiler.trace(
+        log_dir=log_dir,
+        create_perfetto_trace=True,
+        profiler_options=options,
+    ):
         for t in range(NUM_ITERATIONS):
             with jax.profiler.StepTraceAnnotation("train", step_num=t):
                 model, optim_state, out = train_step(model, optim_state, x, y)
                 jax.block_until_ready((model, optim_state, out))
-    # jax.profiler.save_device_memory_profile(os.path.join(log_dir, "memory.prof"))
