@@ -1,16 +1,15 @@
 import os
+
+os.environ["XLA_FLAGS"] = os.environ.get("XLA_FLAGS", "") + " --xla_gpu_enable_command_buffer="
+# os.environ["XLA_CLIENT_MEM_FRACTION"] = "0.92"
 from datetime import datetime
 
 import jax
 import numpy as np
 from optim import clip_grads, get_optim_by_name, global_norm
 from tensorboardX import SummaryWriter
-from transformer import TransformerLM, cross_entropy_loss
+from transformer import TransformerLM, cross_entropy_loss, memory_analysis
 
-# os.environ["XLA_FLAGS"] = (
-#     os.environ.get("XLA_FLAGS", "")
-#     + " --xla_gpu_enable_command_buffer="
-# )
 ACT_FUN = {
     "silu": jax.nn.silu,
     "relu": jax.nn.relu,
@@ -76,6 +75,7 @@ if __name__ == "__main__":
         return loss
 
     @jax.jit(donate_argnums=(0, 1))
+    # @jax.jit
     def train_step(model, optim_state, x, y):
         with jax.named_scope("train_step"):
             with jax.named_scope("forward_backward"):
@@ -89,21 +89,21 @@ if __name__ == "__main__":
                 model, optim_state = optim_update(model=model, grad=grads, state=optim_state)
         return model, optim_state, (loss, grad_norm)
 
+    # memory analysis
+    memory_analysis(train_step, (model, optim_state, x, y))
     # compile
     for _ in range(3):
         model, optim_state, out = train_step(model, optim_state, x, y)
     jax.block_until_ready((model, optim_state, out))
+
     # Train
     options = jax.profiler.ProfileOptions()
     options.advanced_configuration = {
         "gpu_enable_cupti_activity_graph_trace": True,
+        "gpu_dump_graph_node_mapping": True,
     }
 
-    with jax.profiler.trace(
-        log_dir=log_dir,
-        create_perfetto_trace=True,
-        profiler_options=options,
-    ):
+    with jax.profiler.trace(log_dir=log_dir, profiler_options=options):
         for t in range(NUM_ITERATIONS):
             with jax.profiler.StepTraceAnnotation("train", step_num=t):
                 model, optim_state, out = train_step(model, optim_state, x, y)

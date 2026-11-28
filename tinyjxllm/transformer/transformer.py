@@ -403,3 +403,24 @@ def jax_pprint(model):
 
 def count_params(model):
     return sum(leaf.size for leaf in jax.tree.leaves(model))
+
+
+def memory_analysis(train_step, args):
+    """
+    See: https://github.com/AI-Hypercomputer/maxtext/blob/5c79cad4a21afd3e7fc6ef9688e6fc56ce317a9e/src/maxtext/utils/max_utils.py#L912
+    """
+    compiled = train_step.lower(*args).compile()
+    mem = compiled.memory_analysis()
+    args_mem = mem.argument_size_in_bytes / 1024**3
+    out_mem = mem.output_size_in_bytes / 1024**3
+    alias_mem = mem.alias_size_in_bytes / 1024**3
+    temp_size = mem.temp_size_in_bytes / 1024**3
+    total_size = args_mem + out_mem + temp_size - alias_mem
+    print(
+        f"total {total_size:.2f} | "
+        f"temp {temp_size:.2f} | "
+        f"args {args_mem:.2f} | "
+        f"out {out_mem:.2f} GiB"
+    )
+    cost = compiled.cost_analysis()
+    print(cost["flops"])
